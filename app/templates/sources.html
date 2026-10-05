@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<section class="panel">
+  <div class="toolbar">
+    <div>
+      <h1>JOB DISCOVERY SOURCES</h1>
+      <p style="margin-bottom:0;">Configure permitted public job feeds, career feeds, and ATS boards (Greenhouse, Lever, Ashby, RSS, and HTML scrapers).</p>
+    </div>
+  </div>
+
+  <!-- Add Source Console Form -->
+  <form id="sourceForm" class="gridform">
+    <div>
+      <label style="margin:0 0 6px 0;font-size:11px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;">Source Name</label>
+      <input name="name" placeholder="e.g. OpenAI / Stripe / TechCareers" required>
+    </div>
+    <div>
+      <label style="margin:0 0 6px 0;font-size:11px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;">Adapter Type</label>
+      <select name="kind">
+        <option value="greenhouse">Greenhouse ATS</option>
+        <option value="lever">Lever ATS</option>
+        <option value="ashby">Ashby ATS</option>
+        <option value="rss">RSS Feed (XML)</option>
+        <option value="html">HTML Career Scraper</option>
+      </select>
+    </div>
+    <div>
+      <label style="margin:0 0 6px 0;font-size:11px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;">Endpoint / Feed URL</label>
+      <input name="url" placeholder="https://api.greenhouse.io/v1/boards/... or RSS URL" required>
+    </div>
+    <div>
+      <button type="submit" class="btn-cyber" style="width:100%;height:44px;justify-content:center;">
+        + REGISTER SOURCE
+      </button>
+    </div>
+  </form>
+
+  <!-- Sources Table -->
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Source Name</th>
+          <th>Adapter Engine</th>
+          <th>Endpoint Target</th>
+          <th style="text-align:right;">Control</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sources %}
+        <tr>
+          <td>
+            {% if s.enabled %}
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--neon-emerald);display:inline-flex;align-items:center;gap:6px;">
+              <span class="pulse-dot green"></span> ONLINE
+            </span>
+            {% else %}
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);display:inline-flex;align-items:center;gap:6px;">
+              <span class="pulse-dot" style="background:var(--text-dim);"></span> OFFLINE
+            </span>
+            {% endif %}
+          </td>
+          <td>
+            <b style="color:#fff;">{{ s.name }}</b>
+          </td>
+          <td>
+            <span class="source-badge">{{ s.kind|upper }}</span>
+          </td>
+          <td class="truncate" style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">
+            {{ s.url }}
+          </td>
+          <td style="text-align:right;">
+            <button class="mini-btn" onclick="toggleSource({{ s.id }}, {{ 'false' if s.enabled else 'true' }})">
+              {{ 'Disable' if s.enabled else 'Enable' }}
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" style="text-align:center;padding:42px;color:var(--text-dim);">
+            <div style="font-size:28px;margin-bottom:8px;">📡</div>
+            <div style="font-family:var(--font-tech);font-size:14px;color:var(--text-muted);margin-bottom:4px;">NO SOURCES REGISTERED</div>
+            <p style="font-size:12.5px;max-width:400px;margin:auto;">Add a Greenhouse board, Lever feed, or company career RSS feed above to start discovering jobs.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  document.getElementById('sourceForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const token = await CareerAgent.promptTokenIfNeeded();
+    if (!token) return;
+
+    const f = new FormData(e.target);
+    try {
+      const r = await fetch('/api/sources', {
+        method: 'POST',
+        headers: {
+          'X-Admin-Token': token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(Object.fromEntries(f))
+      });
+
+      if (!r.ok) {
+        const txt = await r.text();
+        CareerAgent.showToast(`Failed to add source: ${txt}`, 'error');
+        return;
+      }
+
+      CareerAgent.showToast('Job source registered successfully', 'success');
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      CareerAgent.showToast('Network error adding source', 'error');
+    }
+  };
+
+  async function toggleSource(id, enabled) {
+    const token = await CareerAgent.promptTokenIfNeeded();
+    if (!token) return;
+
+    try {
+      const r = await fetch('/api/sources/' + id, {
+        method: 'PATCH',
+        headers: {
+          'X-Admin-Token': token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ enabled })
+      });
+
+      if (!r.ok) {
+        CareerAgent.showToast('Failed to update source state', 'error');
+        return;
+      }
+
+      CareerAgent.showToast(`Source ${enabled ? 'enabled' : 'disabled'}`, 'success');
+      setTimeout(() => location.reload(), 500);
+    } catch (err) {
+      CareerAgent.showToast('Connection error', 'error');
+    }
+  }
+</script>
+
+{% endblock %}

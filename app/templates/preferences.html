@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<section class="panel narrow">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+    <span style="font-size:24px;">⚙️</span>
+    <div>
+      <h1>MATCHING MATRIX PREFERENCES</h1>
+      <p style="margin-bottom:0;">Calibrate candidate constraints, target job titles, location filters, skill prerequisites, and exclusion boundaries.</p>
+    </div>
+  </div>
+
+  <form id="prefForm" style="margin-top:24px;">
+    <label>
+      Target Job Roles (Comma Separated)
+      <small>Priority role titles matched against job postings (adds preference vector points)</small>
+      <input name="target_roles" value="{{ prefs.target_roles|join(', ') }}" placeholder="e.g. AI Engineer, Machine Learning Intern, Data Scientist, Python Developer">
+    </label>
+
+    <label>
+      Preferred Locations (Comma Separated)
+      <small>Cities or geographical regions given priority match weighting</small>
+      <input name="preferred_locations" value="{{ prefs.preferred_locations|join(', ') }}" placeholder="e.g. Pune, Mumbai, Bangalore, Remote">
+    </label>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+      <label>
+        Required Skills (Must Have)
+        <small>Hard filter: listings lacking these skills are skipped</small>
+        <input name="required_skills" value="{{ prefs.required_skills|join(', ') }}" placeholder="e.g. Python, SQL">
+      </label>
+
+      <label>
+        Preferred / Bonus Skills
+        <small>Additional bonus weighting during score compilation</small>
+        <input name="preferred_skills" value="{{ prefs.preferred_skills|join(', ') }}" placeholder="e.g. PyTorch, FastAPI, Docker">
+      </label>
+    </div>
+
+    <label>
+      Exclude Keywords (Disqualification Filter)
+      <small>Jobs containing any of these keywords in title/description will be disqualified</small>
+      <input name="exclude_keywords" value="{{ prefs.exclude_keywords|join(', ') }}" placeholder="e.g. Senior, Staff, Lead, 8+ years, 10+ years">
+    </label>
+
+    <label>
+      Maximum Experience Cap (Years)
+      <small>Used to filter out senior requirements (0 = Fresher / Entry Level)</small>
+      <input type="number" name="max_experience_years" value="{{ prefs.max_experience_years }}" min="0" max="25" style="max-width:180px;">
+    </label>
+
+    <!-- Work Types Checkboxes -->
+    <div style="margin:22px 0 10px;">
+      <span style="font-size:12px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;display:block;margin-bottom:10px;">
+        Work Arrangement Permissions:
+      </span>
+      <div class="checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" name="remote_enabled" {% if prefs.remote_enabled %}checked{% endif %}>
+          Remote Opportunities
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" name="internships_enabled" {% if prefs.internships_enabled %}checked{% endif %}>
+          Internships / Trainee
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" name="full_time_enabled" {% if prefs.full_time_enabled %}checked{% endif %}>
+          Full-Time Positions
+        </label>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:28px;">
+      <button type="submit" id="save-pref-btn" class="btn-cyber">
+        <span>💾 SAVE CALIBRATION</span>
+      </button>
+    </div>
+  </form>
+</section>
+
+<script>
+  document.getElementById('prefForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const token = await CareerAgent.promptTokenIfNeeded();
+    if (!token) return;
+
+    const btn = document.getElementById('save-pref-btn');
+    btn.classList.add('loading');
+
+    const f = new FormData(e.target);
+    const csv = k => (f.get(k) || '').split(',').map(x => x.trim()).filter(Boolean);
+
+    const body = {
+      target_roles: csv('target_roles'),
+      preferred_locations: csv('preferred_locations'),
+      required_skills: csv('required_skills'),
+      preferred_skills: csv('preferred_skills'),
+      exclude_keywords: csv('exclude_keywords'),
+      max_experience_years: Number(f.get('max_experience_years')) || 0,
+      remote_enabled: f.has('remote_enabled'),
+      internships_enabled: f.has('internships_enabled'),
+      full_time_enabled: f.has('full_time_enabled')
+    };
+
+    try {
+      const r = await fetch('/api/preferences', {
+        method: 'POST',
+        headers: {
+          'X-Admin-Token': token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+
+      btn.classList.remove('loading');
+
+      if (!r.ok) {
+        CareerAgent.showToast('Failed to save preferences. Verify Admin Token.', 'error');
+        return;
+      }
+
+      CareerAgent.showToast('Preferences updated and calibrated', 'success');
+    } catch (err) {
+      btn.classList.remove('loading');
+      CareerAgent.showToast('Network error while saving', 'error');
+    }
+  };
+</script>
+
+{% endblock %}

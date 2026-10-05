@@ -1,0 +1,478 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<!-- Hero Command Section with Live Radar Scope -->
+<section class="hero">
+  <div class="hero-left">
+    <h1>
+      <span>CAREER INTELLIGENCE CORE</span>
+    </h1>
+    <p>
+      <span>Autonomous ATS & RSS Discovery</span>
+      <span class="hero-status-tag">
+        <span class="pulse-dot green"></span> AGENT: ONLINE
+      </span>
+      {% if profile %}
+      <span class="hero-status-tag">
+        <span class="pulse-dot cyan"></span> VECTOR: {{ profile.name }}
+      </span>
+      {% endif %}
+      <span class="hero-status-tag">
+        <span class="pulse-dot amber"></span> SOURCES: {{ active_sources }} ACTIVE
+      </span>
+    </p>
+
+    {% if profile and profile.profile_json and profile.profile_json.skills %}
+    <div style="margin-top:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);text-transform:uppercase;">Ingested Profile Skills:</span>
+      {% for s in profile.profile_json.skills[:6] %}
+      <span class="tag-cyan">{{ s }}</span>
+      {% endfor %}
+      {% if profile.profile_json.skills|length > 6 %}
+      <span class="tag-violet">+{{ profile.profile_json.skills|length - 6 }} more</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="hero-radar-group">
+    <div class="radar-scope-container" title="Autonomous Radar Scope: Scanning 360° across registered boards">
+      <canvas id="radar-canvas"></canvas>
+      <span class="radar-label"><span class="pulse-dot cyan"></span> RADAR: ACTIVE</span>
+    </div>
+    <div>
+      <button id="scan-btn" class="btn-cyber" onclick="CareerAgent.runScan()">
+        ⚡ EXECUTE SCAN NOW
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- Metrics HUD Blocks -->
+<div class="cards">
+  <div class="card-hud high">
+    <div class="card-hud-top">
+      <span class="card-hud-label"><span class="card-hud-icon">🔥</span> HIGH MATCH</span>
+      <span class="version-chip">≥ 75%</span>
+    </div>
+    <b>{{ counts.get('HIGH', 0) }}</b>
+    <small>Telegram & SMTP instant alert armed</small>
+  </div>
+
+  <div class="card-hud medium">
+    <div class="card-hud-top">
+      <span class="card-hud-label"><span class="card-hud-icon">⚡</span> MEDIUM FIT</span>
+      <span class="version-chip">55–74%</span>
+    </div>
+    <b>{{ counts.get('MEDIUM', 0) }}</b>
+    <small>Secondary opportunity targets</small>
+  </div>
+
+  <div class="card-hud low">
+    <div class="card-hud-top">
+      <span class="card-hud-label"><span class="card-hud-icon">⚪</span> LOW FIT</span>
+      <span class="version-chip">&lt; 55%</span>
+    </div>
+    <b>{{ counts.get('LOW', 0) }}</b>
+    <small>Filtered or low keyword correlation</small>
+  </div>
+
+  <div class="card-hud applied">
+    <div class="card-hud-top">
+      <span class="card-hud-label"><span class="card-hud-icon">🎯</span> PIPELINE</span>
+      <span class="version-chip">ACTIVE</span>
+    </div>
+    <b>{{ applied }}</b>
+    <small>Active candidate applications</small>
+  </div>
+</div>
+
+<!-- Opportunities Panel with Dual View Switcher -->
+<section class="panel">
+  <div class="toolbar">
+    <div>
+      <h2>DISCOVERED OPPORTUNITY MATRIX</h2>
+      <p style="margin-bottom:0;">Scored by 6-dimensional semantic vector and skill overlap algorithms.</p>
+    </div>
+
+    <!-- View Switcher & Filters -->
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div class="view-mode-toggle">
+        <button id="view-cards-btn" class="view-btn active" onclick="switchView('cards')">
+          ⊞ Visual Blocks
+        </button>
+        <button id="view-table-btn" class="view-btn" onclick="switchView('table')">
+          ☰ Data Matrix
+        </button>
+      </div>
+
+      <div class="category-tabs">
+        <a href="/" class="category-tab {% if selected_category == 'ALL' %}active{% endif %}">ALL</a>
+        <a href="/?category=HIGH" class="category-tab {% if selected_category == 'HIGH' %}active{% endif %}">🔥 HIGH</a>
+        <a href="/?category=MEDIUM" class="category-tab {% if selected_category == 'MEDIUM' %}active{% endif %}">⚡ MEDIUM</a>
+        <a href="/?category=LOW" class="category-tab {% if selected_category == 'LOW' %}active{% endif %}">⚪ LOW</a>
+      </div>
+    </div>
+
+    <!-- Live Search Input -->
+    <div class="filter-bar" style="margin-top:10px;">
+      <div class="search-box-wrap">
+        <span class="search-box-icon">🔍</span>
+        <input type="text" id="job-search-input" placeholder="Search by role, company, skills, or location in real-time...">
+      </div>
+      <span id="filter-match-count" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);white-space:nowrap;">
+        {{ scores|length }} positions active
+      </span>
+    </div>
+  </div>
+
+  <!-- VIEW 1: VISUAL CARDS GRID (BLOCKS) -->
+  <div id="jobs-cards-view" class="jobs-grid">
+    {% for job, score in scores %}
+    <div class="job-card-block {{ score.category|lower }}" data-search="{{ job.title }} {{ job.company }} {{ job.location }} {{ score.matched_skills|join(' ') }}">
+      <!-- Card Top: Circular Score Dial & Metadata -->
+      <div class="card-block-top">
+        <div class="score-dial-wrap">
+          <div class="score-dial" onclick="CareerAgent.openScoreDetail(
+                {{ job.title|tojson }},
+                '{{ '%.1f'|format(score.final_score) }}',
+                {{ score.category|tojson }},
+                {{ score.skill_score }},
+                {{ score.experience_score }},
+                {{ score.education_score }},
+                {{ score.responsibility_score }},
+                {{ score.technology_score }},
+                {{ score.preference_score }},
+                {{ score.matched_skills|tojson }},
+                {{ score.missing_skills|tojson }},
+                {{ score.explanation|tojson }}
+              )" style="cursor:pointer;" title="Click to view full 6-dimensional telemetry">
+            <svg viewBox="0 0 36 36">
+              <path class="dial-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke-dasharray="100, 100" />
+              <path class="dial-bar-{{ score.category|lower }}" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke-dasharray="{{ '%.1f'|format(score.final_score) }}, 100" />
+            </svg>
+            <div class="score-dial-num">{{ '%.0f'|format(score.final_score) }}%</div>
+          </div>
+          <div>
+            <span class="pill {{ score.category|lower }}" style="font-size:11px;padding:3px 9px;">{{ score.category }} MATCH</span>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:3px;">
+              FIT: {{ '%.1f'|format(score.final_score) }}/100
+            </div>
+          </div>
+        </div>
+
+        <div class="card-block-meta">
+          <span class="source-badge">{{ job.source_name }}</span>
+          {% if job.employment_type %}
+          <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">{{ job.employment_type }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Card Title & Company -->
+      <div class="company-title-wrap">
+        <span class="company-badge-name">{{ job.company }}</span>
+        <h3>{{ job.title }}</h3>
+        <div class="location-tag">
+          <span>📍</span> {{ job.location or 'Remote / Worldwide' }}
+        </div>
+      </div>
+
+      <!-- Mini 6-Dimension Spectrum Bar -->
+      <div>
+        <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim);margin-bottom:3px;">
+          <span>SPECTRUM FIT</span>
+          <span>SKILL {{ '%.0f'|format(score.skill_score) }}% · EXP {{ '%.0f'|format(score.experience_score) }}% · VEC {{ '%.0f'|format(score.responsibility_score) }}%</span>
+        </div>
+        <div class="mini-spectrum">
+          <div class="spectrum-seg" style="width:{{ score.skill_score * 0.4 }}%;background:var(--neon-cyan);"></div>
+          <div class="spectrum-seg" style="width:{{ score.experience_score * 0.2 }}%;background:var(--neon-emerald);"></div>
+          <div class="spectrum-seg" style="width:{{ score.education_score * 0.1 }}%;background:var(--neon-violet);"></div>
+          <div class="spectrum-seg" style="width:{{ score.responsibility_score * 0.15 }}%;background:#38bdf8;"></div>
+          <div class="spectrum-seg" style="width:{{ score.technology_score * 0.1 }}%;background:var(--neon-amber);"></div>
+          <div class="spectrum-seg" style="width:{{ score.preference_score * 0.05 }}%;background:#f43f5e;"></div>
+        </div>
+      </div>
+
+      <!-- Skill Badges Grid -->
+      <div>
+        <div class="skills-block-grid">
+          {% for s in score.matched_skills[:5] %}
+          <span class="tag-cyan">+{{ s }}</span>
+          {% endfor %}
+          {% for m in score.missing_skills[:2] %}
+          <span class="tag-rose">✕ {{ m }}</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Card Actions -->
+      <div class="card-block-actions">
+        <a class="btn-cyber" href="{{ job.url }}" target="_blank" rel="noopener" style="padding:8px 16px;font-size:11.5px;">
+          Apply Direct ↗
+        </a>
+        <button class="btn-cyber-outline" onclick="CareerAgent.openScoreDetail(
+              {{ job.title|tojson }},
+              '{{ '%.1f'|format(score.final_score) }}',
+              {{ score.category|tojson }},
+              {{ score.skill_score }},
+              {{ score.experience_score }},
+              {{ score.education_score }},
+              {{ score.responsibility_score }},
+              {{ score.technology_score }},
+              {{ score.preference_score }},
+              {{ score.matched_skills|tojson }},
+              {{ score.missing_skills|tojson }},
+              {{ score.explanation|tojson }}
+            )">
+          Inspect Matrix ◈
+        </button>
+        <button class="mini-btn" onclick="CareerAgent.setStatus({{ job.id }}, 'APPLIED')">
+          Applied ✓
+        </button>
+      </div>
+    </div>
+    {% else %}
+    <div style="grid-column:1/-1;text-align:center;padding:50px;color:var(--text-dim);background:rgba(6,10,22,0.6);border-radius:12px;border:1px solid var(--border-subtle);">
+      <div style="font-size:36px;margin-bottom:12px;">🛸</div>
+      <div style="font-family:var(--font-tech);font-size:16px;color:var(--text-muted);margin-bottom:6px;">NO JOBS SCORED YET</div>
+      <p style="font-size:13px;max-width:420px;margin:auto;">Upload your resume and execute a scan to calculate neural vector matching scores.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- VIEW 2: DATA MATRIX TABLE (OPTIONAL ALTERNATIVE) -->
+  <div id="jobs-table-view" class="table-responsive" style="display:none;margin-top:18px;">
+    <table id="jobs-table">
+      <thead>
+        <tr>
+          <th>Match Score</th>
+          <th>Role & Skill Alignment</th>
+          <th>Company</th>
+          <th>Location</th>
+          <th>Source</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job, score in scores %}
+        <tr data-search="{{ job.title }} {{ job.company }} {{ job.location }} {{ score.matched_skills|join(' ') }}">
+          <td>
+            <span class="pill {{ score.category|lower }}"
+                  onclick="CareerAgent.openScoreDetail(
+                    {{ job.title|tojson }},
+                    '{{ '%.1f'|format(score.final_score) }}',
+                    {{ score.category|tojson }},
+                    {{ score.skill_score }},
+                    {{ score.experience_score }},
+                    {{ score.education_score }},
+                    {{ score.responsibility_score }},
+                    {{ score.technology_score }},
+                    {{ score.preference_score }},
+                    {{ score.matched_skills|tojson }},
+                    {{ score.missing_skills|tojson }},
+                    {{ score.explanation|tojson }}
+                  )"
+                  style="cursor:pointer;"
+                  title="Click to view full 6-dimensional telemetry">
+              {{ '%.1f'|format(score.final_score) }}%
+            </span>
+          </td>
+          <td class="job-title-cell">
+            <b>{{ job.title }}</b>
+            {% if score.matched_skills %}
+            <div class="skills-preview">
+              {% for s in score.matched_skills[:4] %}
+              <span class="tag-cyan">+{{ s }}</span>
+              {% endfor %}
+              {% if score.matched_skills|length > 4 %}
+              <span style="font-size:10px;color:var(--text-dim);">+{{ score.matched_skills|length - 4 }} more</span>
+              {% endif %}
+            </div>
+            {% endif %}
+          </td>
+          <td>
+            <span style="font-weight:600;color:var(--text-main);">{{ job.company }}</span>
+            {% if job.employment_type %}
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">{{ job.employment_type }}</div>
+            {% endif %}
+          </td>
+          <td>
+            <span style="color:var(--text-muted);">{{ job.location or 'Remote / Worldwide' }}</span>
+          </td>
+          <td>
+            <span class="source-badge">{{ job.source_name }}</span>
+          </td>
+          <td>
+            <div class="action-group">
+              <a class="apply-btn" href="{{ job.url }}" target="_blank" rel="noopener">
+                Apply Direct ↗
+              </a>
+              <button class="mini-btn" onclick="CareerAgent.setStatus({{ job.id }}, 'APPLIED')">
+                Applied ✓
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 6-Dimensional Score Telemetry Modal -->
+<div id="score-detail-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width: 640px;">
+    <div class="modal-header">
+      <h3><span>◈</span> MATCH TELEMETRY MATRIX</h3>
+      <button class="modal-close-btn" onclick="CareerAgent.closeScoreDetail()">✕</button>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <h4 id="modal-job-title" style="font-size:16px;color:#fff;margin-bottom:6px;"></h4>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span id="modal-score-value" style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--neon-cyan);"></span>
+        <span id="modal-category-tag" class="pill"></span>
+      </div>
+    </div>
+
+    <!-- 6 Dimension Bars -->
+    <div class="telemetry-grid">
+      <div class="telemetry-item">
+        <div class="telemetry-label">
+          <span>Skill Alignment (40%)</span>
+          <span id="meter-skill-val">0%</span>
+        </div>
+        <div class="telemetry-bar-bg">
+          <div id="meter-skill" class="telemetry-bar-fill" style="width:0%;"></div>
+        </div>
+      </div>
+
+      <div class="telemetry-item">
+        <div class="telemetry-label">
+          <span>Experience Level (20%)</span>
+          <span id="meter-exp-val">0%</span>
+        </div>
+        <div class="telemetry-bar-bg">
+          <div id="meter-exp" class="telemetry-bar-fill" style="width:0%;"></div>
+        </div>
+      </div>
+
+      <div class="telemetry-item">
+        <div class="telemetry-label">
+          <span>Education Fit (10%)</span>
+          <span id="meter-edu-val">0%</span>
+        </div>
+        <div class="telemetry-bar-bg">
+          <div id="meter-edu" class="telemetry-bar-fill" style="width:0%;"></div>
+        </div>
+      </div>
+
+      <div class="telemetry-item">
+        <div class="telemetry-label">
+          <span>Semantic / Vector Fit (15%)</span>
+          <span id="meter-resp-val">0%</span>
+        </div>
+        <div class="telemetry-bar-bg">
+          <div id="meter-resp" class="telemetry-bar-fill" style="width:0%;"></div>
+        </div>
+      </div>
+
+      <div class="telemetry-item">
+        <div class="telemetry-label">
+          <span>Technology Match (10%)</span>
+          <span id="meter-tech-val">0%</span>
+        </div>
+        <div class="telemetry-bar-bg">
+          <div id="meter-tech" class="telemetry-bar-fill" style="width:0%;"></div>
+        </div>
+      </div>
+
+      <div class="telemetry-item">
+        <div class="telemetry-label">
+          <span>User Preferences (5%)</span>
+          <span id="meter-pref-val">0%</span>
+        </div>
+        <div class="telemetry-bar-bg">
+          <div id="meter-pref" class="telemetry-bar-fill" style="width:0%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Matched Skills -->
+    <div style="margin-top:14px;">
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);text-transform:uppercase;">Matched Skills:</span>
+      <div id="modal-matched-skills" class="cyber-tag-list"></div>
+    </div>
+
+    <!-- Missing Skills -->
+    <div style="margin-top:14px;">
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);text-transform:uppercase;">Missing Resume Skills:</span>
+      <div id="modal-missing-skills" class="cyber-tag-list"></div>
+    </div>
+
+    <!-- Explanation Box -->
+    <div style="margin-top:18px;background:rgba(5,9,20,0.8);border:1px solid var(--border-subtle);border-radius:8px;padding:12px;">
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px;">MATCHER EXPLANATION LOG</span>
+      <p id="modal-explanation" style="font-size:12.5px;color:var(--text-muted);margin-bottom:0;line-height:1.5;"></p>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn-cyber" onclick="CareerAgent.closeScoreDetail()">Close Telemetry</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function switchView(mode) {
+    AudioFX.click();
+    const cardsView = document.getElementById('jobs-cards-view');
+    const tableView = document.getElementById('jobs-table-view');
+    const cardsBtn = document.getElementById('view-cards-btn');
+    const tableBtn = document.getElementById('view-table-btn');
+
+    if (mode === 'cards') {
+      cardsView.style.display = 'grid';
+      tableView.style.display = 'none';
+      cardsBtn.classList.add('active');
+      tableBtn.classList.remove('active');
+    } else {
+      cardsView.style.display = 'none';
+      tableView.style.display = 'block';
+      tableBtn.classList.add('active');
+      cardsBtn.classList.remove('active');
+    }
+  }
+
+  // Enhanced search to filter both cards and table rows
+  document.getElementById('job-search-input').addEventListener('input', function() {
+    const q = this.value.toLowerCase().trim();
+    const cards = document.querySelectorAll('.job-card-block');
+    const rows = document.querySelectorAll('#jobs-table tbody tr');
+    let visible = 0;
+
+    cards.forEach(card => {
+      const text = (card.getAttribute('data-search') || card.innerText).toLowerCase();
+      if (!q || text.includes(q)) {
+        card.style.display = 'flex';
+        visible++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    rows.forEach(row => {
+      const text = (row.getAttribute('data-search') || row.innerText).toLowerCase();
+      if (!q || text.includes(q)) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
+    const countEl = document.getElementById('filter-match-count');
+    if (countEl) countEl.textContent = `${visible} positions active`;
+  });
+</script>
+
+{% endblock %}

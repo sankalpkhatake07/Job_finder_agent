@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<section class="panel narrow">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+    <span style="font-size:24px;">📄</span>
+    <div>
+      <h1>CANDIDATE PROFILE INGESTION</h1>
+      <p style="margin-bottom:0;">Upload the candidate resume to extract skill tokens, education records, and semantic vector embeddings.</p>
+    </div>
+  </div>
+
+  <form id="setup-form" method="post" enctype="multipart/form-data" style="margin-top:24px;">
+    <label>
+      Candidate Full Name
+      <small>The name attached to discovery alerts and application tracker</small>
+      <input name="name" placeholder="e.g. Alex Mercer" required autocomplete="name">
+    </label>
+
+    <label style="margin-top:20px;">
+      Resume Document
+      <small>Supported formats: PDF, DOCX, TXT, Markdown (Max size 8 MB)</small>
+      
+      <!-- High-tech Dropzone -->
+      <div id="resume-dropzone" class="dropzone">
+        <span class="dropzone-icon">⚡</span>
+        <div class="dropzone-text" id="dropzone-label">Drag & drop your resume file here or click to browse</div>
+        <div class="dropzone-hint">PDF / DOCX / TXT / MD</div>
+        <input type="file" id="resume-file-input" name="resume" accept=".pdf,.docx,.txt,.md" required style="display:none;">
+      </div>
+    </label>
+
+    <div id="file-selected-badge" style="display:none;margin-bottom:20px;padding:10px 14px;background:rgba(0,240,255,0.08);border:1px solid rgba(0,240,255,0.3);border-radius:8px;font-family:var(--font-mono);font-size:12px;color:var(--neon-cyan);">
+      <span style="margin-right:8px;">✓ FILE READY:</span> <span id="file-name-text"></span>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:28px;">
+      <button type="submit" id="build-btn" class="btn-cyber">
+        <span>⚡ INGEST & COMPILE PROFILE</span>
+      </button>
+    </div>
+  </form>
+</section>
+
+<script>
+  const dropzone = document.getElementById('resume-dropzone');
+  const fileInput = document.getElementById('resume-file-input');
+  const dropLabel = document.getElementById('dropzone-label');
+  const fileBadge = document.getElementById('file-selected-badge');
+  const fileNameText = document.getElementById('file-name-text');
+  const form = document.getElementById('setup-form');
+  const buildBtn = document.getElementById('build-btn');
+
+  dropzone.addEventListener('click', () => fileInput.click());
+
+  ['dragenter', 'dragover'].forEach(name => {
+    dropzone.addEventListener(name, (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(name => {
+    dropzone.addEventListener(name, (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+    });
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      handleFile(fileInput.files[0]);
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files.length) {
+      handleFile(fileInput.files[0]);
+    }
+  });
+
+  function handleFile(file) {
+    if (!file) return;
+    fileNameText.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    fileBadge.style.display = 'block';
+    dropLabel.textContent = `Selected: ${file.name}`;
+  }
+
+  form.addEventListener('submit', () => {
+    buildBtn.classList.add('loading');
+    buildBtn.innerHTML = '<span>PARSING VECTOR MATRIX...</span>';
+  });
+</script>
+
+{% endblock %}

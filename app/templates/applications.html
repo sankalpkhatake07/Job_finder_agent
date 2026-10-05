@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<!-- Pipeline Funnel Header -->
+<div class="pipeline-funnel">
+  {% for st in statuses %}
+  <div class="funnel-card">
+    <b style="
+      {% if st == 'OFFER' %}color:var(--neon-emerald);text-shadow:0 0 10px rgba(16,185,129,0.4);
+      {% elif st == 'INTERVIEW' %}color:var(--neon-cyan);text-shadow:0 0 10px rgba(0,240,255,0.4);
+      {% elif st == 'APPLIED' %}color:#38bdf8;
+      {% elif st == 'REJECTED' %}color:var(--neon-rose);
+      {% else %}color:var(--text-muted);
+      {% endif %}
+    ">
+      {{ status_counts.get(st, 0) }}
+    </b>
+    <span>{{ st }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Applications Tracker Panel -->
+<section class="panel">
+  <div class="toolbar">
+    <div>
+      <h1>APPLICATION TRACKING MATRIX</h1>
+      <p style="margin-bottom:0;">Live lifecycle audit of discovered opportunities from initial save through interviews and offers.</p>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Target Role</th>
+          <th>Company</th>
+          <th>Fit Score</th>
+          <th>Current Status</th>
+          <th>Intelligence Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <a href="{{ row.url }}" target="_blank" rel="noopener" style="color:var(--neon-cyan);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+              {{ row.title }} <span style="font-size:11px;">↗</span>
+            </a>
+          </td>
+          <td>
+            <span style="font-weight:600;color:var(--text-main);">{{ row.company }}</span>
+          </td>
+          <td>
+            <span class="pill {% if row.score >= 75 %}high{% elif row.score >= 55 %}medium{% else %}low{% endif %}">
+              {{ '%.1f'|format(row.score) }}%
+            </span>
+          </td>
+          <td>
+            <select style="padding:6px 10px;font-family:var(--font-mono);font-size:12px;width:auto;margin:0;" onchange="updateStatus({{ row.id }}, this.value)">
+              {% for st in statuses %}
+              <option value="{{ st }}" {% if st == row.status %}selected{% endif %}>{{ st }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td>
+            <span style="color:var(--text-muted);font-size:12.5px;">{{ row.notes or '—' }}</span>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" style="text-align:center;padding:44px;color:var(--text-dim);">
+            <div style="font-size:28px;margin-bottom:8px;">🎯</div>
+            <div style="font-family:var(--font-tech);font-size:14px;color:var(--text-muted);margin-bottom:4px;">NO APPLICATIONS RECORDED</div>
+            <p style="font-size:12.5px;max-width:400px;margin:auto;">When you find high-match positions on the Dashboard, click "Applied" to track your candidacy lifecycle here.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  async function updateStatus(id, value) {
+    const token = await CareerAgent.promptTokenIfNeeded();
+    if (!token) return;
+
+    try {
+      const r = await fetch('/api/applications/' + id, {
+        method: 'POST',
+        headers: {
+          'X-Admin-Token': token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: value })
+      });
+
+      if (!r.ok) {
+        CareerAgent.showToast('Failed to update status', 'error');
+        return;
+      }
+
+      CareerAgent.showToast(`Updated to ${value}`, 'success');
+      setTimeout(() => location.reload(), 600);
+    } catch (e) {
+      CareerAgent.showToast('Network error updating application status', 'error');
+    }
+  }
+</script>
+
+{% endblock %}

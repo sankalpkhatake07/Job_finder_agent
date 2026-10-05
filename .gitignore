@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+career_agent.db
+uploads/
+.pytest_cache/
+.DS_Store
